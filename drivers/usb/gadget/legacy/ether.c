@@ -11,6 +11,7 @@
 
 #include <linux/kernel.h>
 #include <linux/netdevice.h>
+#include <linux/nls.h>
 
 #if defined USB_ETH_RNDIS
 #  undef USB_ETH_RNDIS
@@ -92,8 +93,8 @@ static inline bool has_rndis(void)
 
 #include "u_ecm.h"
 #include "u_gether.h"
-#ifdef	USB_ETH_RNDIS
 #include "u_rndis.h"
+#ifdef	USB_ETH_RNDIS
 #include "rndis.h"
 #else
 #define rndis_borrow_net(...) do {} while (0)
@@ -364,6 +365,8 @@ static int eth_bind(struct usb_composite_dev *cdev)
 
 	if (has_rndis()) {
 		/* RNDIS plus ECM-or-Subset */
+		struct f_rndis_opts *rndis_opts = NULL;
+
 		gether_set_gadget(net, cdev->gadget);
 		status = gether_register_netdev(net);
 		if (status)
@@ -387,6 +390,18 @@ static int eth_bind(struct usb_composite_dev *cdev)
 		device_desc.idVendor = cpu_to_le16(RNDIS_VENDOR_NUM);
 		device_desc.idProduct = cpu_to_le16(RNDIS_PRODUCT_NUM);
 		device_desc.bNumConfigurations = 2;
+
+		/* Configure Microsoft OS 1.0 descriptors for RNDIS. */
+		cdev->os_desc_config = &rndis_config_driver;
+		cdev->use_os_string = true;
+		cdev->b_vendor_code = 0xcd; /* arbitrary */
+		utf8s_to_utf16s("MSFT100", 7,
+			UTF16_LITTLE_ENDIAN, (wchar_t *)cdev->qw_sign,
+			OS_STRING_QW_SIGN_LEN / 2);
+		rndis_opts = container_of(fi_rndis, struct f_rndis_opts,
+					  func_inst);
+		memcpy(rndis_opts->rndis_ext_compat_id,
+			"RNDIS\0\0\0" "5162001", 16);
 	}
 
 	/* Allocate string descriptor numbers ... note that string
